@@ -4,12 +4,14 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "once": "RUN_ONCE=1 node index.js"
+    "start": "node index.js"
   },
-"dependencies": {
-  "dotenv": "^16.4.5",
-  "imap-simple": "^5.1.0",
-  "imap": "^0.8.19"
+  "engines": {
+    "node": "22.x"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "imap": "^0.8.19",
+    "imap-simple": "^5.1.0"
+  }
 }
-   
