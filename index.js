@@ -68,8 +68,8 @@ async function mainLoop() {
       await checkMailboxOnce();
     } catch (err) {
       console.error("[imap] ERROR:", err?.message || err);
-      // keep alive even if it errors
     }
+    console.log(`[loop] sleeping ${POLL_MS}ms`);
     await new Promise(r => setTimeout(r, POLL_MS));
   }
 }
