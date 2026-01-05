@@ -21,16 +21,23 @@ async function checkMailboxOnce() {
   required("IMAP_USER", IMAP_USER);
   required("IMAP_PASS", IMAP_PASS);
 
-  const config = {
-    imap: {
-      user: IMAP_USER,
-      password: IMAP_PASS,
-      host: IMAP_HOST,
-      port: IMAP_PORT,
-      tls: IMAP_TLS,
-      authTimeout: 20_000,
+const IMAP_ALLOW_SELFSIGNED = (process.env.IMAP_ALLOW_SELFSIGNED ?? "false") === "true";
+
+const config = {
+  imap: {
+    user: IMAP_USER,
+    password: IMAP_PASS,
+    host: IMAP_HOST,
+    port: IMAP_PORT,
+    tls: IMAP_TLS,
+    authTimeout: 20_000,
+    tlsOptions: {
+      servername: IMAP_HOST,
+      rejectUnauthorized: !IMAP_ALLOW_SELFSIGNED,
     },
-  };
+  },
+};
+
 
   console.log(`[imap] connecting to ${IMAP_HOST}:${IMAP_PORT} tls=${IMAP_TLS} box=${IMAP_BOX}`);
 
