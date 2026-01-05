@@ -1,63 +1,45 @@
-import 'dotenv/config';
-import { google } from 'googleapis';
-import Database from 'better-sqlite3';
+import Imap from "imap-simple";
+import dotenv from "dotenv";
 
-const LABEL = 'MAGENTO_ORDERS';
+dotenv.config();
 
-const auth = new google.auth.JWT(
-  process.env.GMAIL_CLIENT_EMAIL,
-  null,
-  process.env.GMAIL_PRIVATE_KEY.replace(/\\n/g, '\n'),
-  ['https://www.googleapis.com/auth/gmail.readonly']
-);
+const config = {
+  imap: {
+    user: process.env.IMAP_USER,
+    password: process.env.IMAP_PASS,
+    host: process.env.IMAP_HOST,
+    port: Number(process.env.IMAP_PORT),
+    tls: process.env.IMAP_SECURE === "true",
+    authTimeout: 10000
+  }
+};
 
-const gmail = google.gmail({ version: 'v1', auth });
-const db = new Database('orders.db');
+async function testImap() {
+  console.log("🔌 Connecting to Gmail IMAP…");
 
-db.prepare(`
-  CREATE TABLE IF NOT EXISTS orders (
-    order_id TEXT PRIMARY KEY,
-    email_id TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )
-`).run();
+  const connection = await Imap.connect(config);
+  console.log("✅ Connected");
 
-async function run() {
-  await auth.authorize();
+  await connection.openBox(process.env.IMAP_LABEL || "INBOX");
 
-  const res = await gmail.users.messages.list({
-    userId: 'me',
-    labelIds: [LABEL],
-    maxResults: 10
-  });
+  const searchCriteria = ["ALL"];
+  const fetchOptions = { bodies: ["HEADER.FIELDS (SUBJECT FROM DATE)"], struct: false };
 
-  if (!res.data.messages) {
-    console.log('No new Magento orders');
-    return;
+  const messages = await connection.search(searchCriteria, fetchOptions);
+
+  console.log(`📬 Messages in ${process.env.IMAP_LABEL}:`, messages.length);
+
+  if (messages.length > 0) {
+    const last = messages[messages.length - 1];
+    console.log("🧾 Latest email headers:");
+    console.log(last.parts[0].body);
   }
 
-  for (const msg of res.data.messages) {
-    const exists = db
-      .prepare('SELECT 1 FROM orders WHERE email_id = ?')
-      .get(msg.id);
-
-    if (exists) continue;
-
-    const full = await gmail.users.messages.get({
-      userId: 'me',
-      id: msg.id,
-      format: 'metadata'
-    });
-
-    const subject =
-      full.data.payload.headers.find(h => h.name === 'Subject')?.value || '';
-
-    console.log('New order email:', subject);
-
-    db.prepare(
-      'INSERT INTO orders (order_id, email_id) VALUES (?, ?)'
-    ).run(subject, msg.id);
-  }
+  await connection.end();
+  console.log("🔒 IMAP connection closed");
 }
 
-run().catch(console.error);
+testImap().catch(err => {
+  console.error("❌ IMAP test failed:", err.message);
+  process.exit(1);
+});
