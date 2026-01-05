@@ -1,45 +1,50 @@
-import Imap from "imap-simple";
-import dotenv from "dotenv";
+import "dotenv/config";
+import imaps from "imap-simple";
 
-dotenv.config();
+function need(name) {
+  const v = process.env[name];
+  if (!v) throw new Error(`Missing env var: ${name}`);
+  return v;
+}
 
 const config = {
   imap: {
-    user: process.env.IMAP_USER,
-    password: process.env.IMAP_PASS,
-    host: process.env.IMAP_HOST,
-    port: Number(process.env.IMAP_PORT),
-    tls: process.env.IMAP_SECURE === "true",
-    authTimeout: 10000
-  }
+    user: need("IMAP_USER"),
+    password: need("IMAP_PASS"),
+    host: process.env.IMAP_HOST || "imap.gmail.com",
+    port: Number(process.env.IMAP_PORT || 993),
+    tls: (process.env.IMAP_TLS || "true").toLowerCase() === "true",
+    authTimeout: 20000,
+  },
 };
 
-async function testImap() {
-  console.log("🔌 Connecting to Gmail IMAP…");
+const SEARCH_SUBJECT = process.env.SEARCH_SUBJECT || "order confirmation";
 
-  const connection = await Imap.connect(config);
-  console.log("✅ Connected");
+(async () => {
+  console.log("Connecting to IMAP…");
+  const connection = await imaps.connect(config);
 
-  await connection.openBox(process.env.IMAP_LABEL || "INBOX");
+  await connection.openBox("INBOX");
+  console.log("Connected ✅ Opened INBOX");
 
-  const searchCriteria = ["ALL"];
-  const fetchOptions = { bodies: ["HEADER.FIELDS (SUBJECT FROM DATE)"], struct: false };
+  // Search recent emails with subject containing our phrase
+  const searchCriteria = ["ALL", ["HEADER", "SUBJECT", SEARCH_SUBJECT]];
+  const fetchOptions = { bodies: ["HEADER.FIELDS (FROM TO SUBJECT DATE)"], markSeen: false };
 
   const messages = await connection.search(searchCriteria, fetchOptions);
 
-  console.log(`📬 Messages in ${process.env.IMAP_LABEL}:`, messages.length);
+  console.log(`Found ${messages.length} messages matching subject: "${SEARCH_SUBJECT}"`);
 
-  if (messages.length > 0) {
-    const last = messages[messages.length - 1];
-    console.log("🧾 Latest email headers:");
-    console.log(last.parts[0].body);
+  // Print last 5 subjects
+  const last = messages.slice(-5);
+  for (const m of last) {
+    const headerPart = m.parts?.[0]?.body || {};
+    const subject = (headerPart.subject && headerPart.subject[0]) || "(no subject)";
+    const from = (headerPart.from && headerPart.from[0]) || "(no from)";
+    const date = (headerPart.date && headerPart.date[0]) || "(no date)";
+    console.log(`- ${date} | ${from} | ${subject}`);
   }
 
   await connection.end();
-  console.log("🔒 IMAP connection closed");
-}
-
-testImap().catch(err => {
-  console.error("❌ IMAP test failed:", err.message);
-  process.exit(1);
-});
+  console.log("Done ✅");
+})();
