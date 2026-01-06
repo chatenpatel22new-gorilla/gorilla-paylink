@@ -86,3 +86,39 @@ http
 
 // Start worker loop
 mainLoop();
+
+const RUN_ONCE = (process.env.RUN_ONCE ?? "false") === "true";
+
+async function run() {
+  try {
+    await checkMailboxOnce();
+  } catch (err) {
+    console.error("[imap] ERROR:", err?.message || err);
+    process.exitCode = 1;
+  }
+
+  if (RUN_ONCE) {
+    console.log("[run] done (RUN_ONCE=true), exiting");
+    process.exit();
+  }
+
+  // normal loop mode
+  while (true) {
+    console.log(`[loop] sleeping ${POLL_MS}ms`);
+    await new Promise(r => setTimeout(r, POLL_MS));
+    try {
+      await checkMailboxOnce();
+    } catch (err) {
+      console.error("[imap] ERROR:", err?.message || err);
+    }
+  }
+}
+
+// keep HTTP server (fine to keep)
+const port = Number(process.env.PORT || 3000);
+http.createServer((req, res) => {
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end("gorilla-paylink: ok\n");
+}).listen(port, () => console.log(`[web] listening on ${port}`));
+
+run();
