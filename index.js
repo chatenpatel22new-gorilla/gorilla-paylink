@@ -9,7 +9,7 @@ const IMAP_PASS = process.env.IMAP_PASS;
 const IMAP_TLS  = (process.env.IMAP_TLS ?? "true") !== "false";
 
 // IMPORTANT: set this to your Gmail label name
-const IMAP_BOX  = process.env.IMAP_BOX || "INBOX";
+const IMAP_BOX  = process.env.IMAP_BOX || "MAGENTO_ORDERS";
 
 const POLL_MS = Number(process.env.POLL_MS || 60_000);
 const RUN_ONCE = (process.env.RUN_ONCE ?? "false") === "true";
