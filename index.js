@@ -1,11 +1,3 @@
-process.on("SIGTERM", () => {
-  console.error("[signal] SIGTERM received - Railway is stopping the container");
-});
-process.on("SIGINT", () => {
-  console.error("[signal] SIGINT received");
-});
-
-
 import http from "http";
 import "dotenv/config";
 import imaps from "imap-simple";
@@ -13,11 +5,23 @@ import imaps from "imap-simple";
 // ---- Config from Railway Variables ----
 const IMAP_HOST = process.env.IMAP_HOST || "imap.gmail.com";
 const IMAP_PORT = Number(process.env.IMAP_PORT || 993);
-const IMAP_USER = process.env.IMAP_USER;          // full email
-const IMAP_PASS = process.env.IMAP_PASS;          // Gmail app password
-const IMAP_TLS  = (process.env.IMAP_TLS ?? "true") !== "false";
-const IMAP_BOX  = process.env.IMAP_BOX || "INBOX";
-const POLL_MS   = Number(process.env.POLL_MS || 60_000);
+
+const IMAP_USER = process.env.IMAP_USER; // hello@...
+const IMAP_PASS = process.env.IMAP_PASS; // app password
+
+// accept either IMAP_TLS or IMAP_SECURE (because your Railway screenshot shows IMAP_SECURE)
+const IMAP_TLS =
+  ((process.env.IMAP_TLS ?? process.env.IMAP_SECURE ?? "true") + "").toLowerCase() !== "false";
+
+// accept either IMAP_BOX or IMAP_LABEL (because your Railway screenshot shows IMAP_LABEL)
+const IMAP_BOX = process.env.IMAP_BOX || process.env.IMAP_LABEL || "INBOX";
+
+// how often to poll
+const POLL_MS = Number(process.env.POLL_MS || 60_000);
+
+// only use this if you *really* need it (Gmail normally should NOT)
+const IMAP_ALLOW_SELFSIGNED =
+  ((process.env.IMAP_ALLOW_SELFSIGNED ?? "false") + "").toLowerCase() === "true";
 
 function required(name, val) {
   if (!val) throw new Error(`Missing required env var: ${name}`);
@@ -27,24 +31,20 @@ async function checkMailboxOnce() {
   required("IMAP_USER", IMAP_USER);
   required("IMAP_PASS", IMAP_PASS);
 
-const IMAP_ALLOW_SELFSIGNED =
-  (process.env.IMAP_ALLOW_SELFSIGNED ?? "false") === "true";
-
-const config = {
-  imap: {
-    user: IMAP_USER,
-    password: IMAP_PASS,
-    host: IMAP_HOST,
-    port: IMAP_PORT,
-    tls: IMAP_TLS,
-    authTimeout: 20_000,
-    tlsOptions: {
-      servername: IMAP_HOST,
-      rejectUnauthorized: !IMAP_ALLOW_SELFSIGNED,
+  const config = {
+    imap: {
+      user: IMAP_USER,
+      password: IMAP_PASS,
+      host: IMAP_HOST,
+      port: IMAP_PORT,
+      tls: IMAP_TLS,
+      authTimeout: 20_000,
+      tlsOptions: {
+        servername: IMAP_HOST,
+        rejectUnauthorized: !IMAP_ALLOW_SELFSIGNED,
+      },
     },
-  },
-};
-
+  };
 
   console.log(`[imap] connecting to ${IMAP_HOST}:${IMAP_PORT} tls=${IMAP_TLS} box=${IMAP_BOX}`);
 
@@ -61,7 +61,7 @@ const config = {
   console.log(`[imap] found ${results.length} unseen messages`);
 
   for (const r of results.slice(0, 5)) {
-    const header = r.parts.find(p => p.which?.startsWith("HEADER"))?.body;
+    const header = r.parts.find((p) => p.which?.startsWith("HEADER"))?.body;
     const subject = header?.subject?.[0] || "(no subject)";
     console.log(`[imap] subject: ${subject}`);
   }
@@ -69,7 +69,8 @@ const config = {
   connection.end();
 }
 
-async function mainLoop() {
+async function main() {
+  // keep running forever
   while (true) {
     try {
       await checkMailboxOnce();
@@ -77,17 +78,18 @@ async function mainLoop() {
       console.error("[imap] ERROR:", err?.message || err);
     }
     console.log(`[loop] sleeping ${POLL_MS}ms`);
-    await new Promise(r => setTimeout(r, POLL_MS));
+    await new Promise((r) => setTimeout(r, POLL_MS));
   }
 }
 
 // ---- Keep Railway happy: run an HTTP server ----
-const PORT = Number(process.env.PORT || 3000);
+const port = Number(process.env.PORT || 3000);
 http
   .createServer((req, res) => {
     res.writeHead(200, { "Content-Type": "text/plain" });
     res.end("gorilla-paylink: ok\n");
   })
-  .listen(PORT, () => console.log(`[web] listening on ${PORT}`));
+  .listen(port, () => console.log(`[web] listening on ${port}`));
 
-mainLoop();
+// Start worker loop
+main();
