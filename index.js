@@ -67,9 +67,14 @@ async function checkMailboxOnce() {
   const searchCriteria = ["ALL"];
 
 const fetchOptions = {
-  bodies: ["HEADER.FIELDS (FROM TO SUBJECT DATE)", "TEXT"],
+  bodies: [
+    "HEADER.FIELDS (FROM TO SUBJECT DATE)",
+    "TEXT",
+    "HTML"
+  ],
   markSeen: false,
 };
+
 
   const results = await connection.search(searchCriteria, fetchOptions);
 
