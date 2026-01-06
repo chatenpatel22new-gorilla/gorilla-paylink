@@ -75,17 +75,22 @@ async function checkMailboxOnce() {
   const searchCriteria = ["ALL"];
 
   // 🚨 IMPORTANT: DO NOT REQUEST HTML (this crashes Gmail parsing)
+  // Server-side filtering (MUCH faster than scanning ALL)
+  const searchCriteria = [
+    "ALL",
+    ["TEXT", "Credit Card"],
+    ["TEXT", "United Kingdom"],
+  ];
+
   const fetchOptions = {
-    bodies: [
-      "HEADER.FIELDS (FROM TO SUBJECT DATE)",
-      "TEXT",
-    ],
+    bodies: ["HEADER.FIELDS (FROM TO SUBJECT DATE)", "TEXT"],
     markSeen: false,
   };
 
+  console.log("[imap] searching (server-side) for Credit Card + United Kingdom...");
   const results = await connection.search(searchCriteria, fetchOptions);
+  console.log(`[imap] server returned ${results.length} matching messages`);
 
-  console.log(`[imap] scanned ${results.length} messages`);
 
   let matchCount = 0;
 
