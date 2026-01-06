@@ -101,7 +101,10 @@ async function checkMailboxOnce() {
     const text = extractText(r.parts) || "";
 
     // Double-check locally too (belt + braces)
-    const isMatch = MUST_CONTAIN.every((s) => text.includes(s));
+const lower = text.toLowerCase();
+const isMatch = MUST_CONTAIN.every(s =>
+  lower.includes(s.toLowerCase())
+);
     if (!isMatch) {
       console.log(`[skip] ${subject}`);
       continue;
