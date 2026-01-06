@@ -8,24 +8,20 @@ const IMAP_USER = process.env.IMAP_USER;
 const IMAP_PASS = process.env.IMAP_PASS;
 const IMAP_TLS  = (process.env.IMAP_TLS ?? "true") !== "false";
 
-// IMPORTANT: set this to your Gmail label name
+// Gmail label/folder OR inbox fallback
 const IMAP_BOX  = process.env.IMAP_BOX || "INBOX";
 
+// Only match emails containing BOTH strings
+const MUST_CONTAIN = ["Credit Card", "United Kingdom"];
+
+// Poll frequency
 const POLL_MS = Number(process.env.POLL_MS || 60_000);
+
+// If true, do one check and exit (great for testing)
 const RUN_ONCE = (process.env.RUN_ONCE ?? "false") === "true";
-const IMAP_ALLOW_SELFSIGNED = (process.env.IMAP_ALLOW_SELFSIGNED ?? "false") === "true";
 
 function required(name, val) {
   if (!val) throw new Error(`Missing required env var: ${name}`);
-}
-
-function parseMagentoOrder(text) {
-  // Basic extraction based on the email you pasted
-  const orderId = text.match(/Your Order\s*#(\d+)/i)?.[1] || null;
-  const placedOn = text.match(/Placed on\s*(.+)/i)?.[1]?.trim() || null;
-  const grandTotal = text.match(/Grand Total \(Incl\.Tax\)\s*£\s*([\d.]+)/i)?.[1] || null;
-
-  return { orderId, placedOn, grandTotal };
 }
 
 async function checkMailboxOnce() {
@@ -40,10 +36,8 @@ async function checkMailboxOnce() {
       port: IMAP_PORT,
       tls: IMAP_TLS,
       authTimeout: 20_000,
-      tlsOptions: {
-        servername: IMAP_HOST,
-        rejectUnauthorized: !IMAP_ALLOW_SELFSIGNED,
-      },
+      // For Gmail, keep strict TLS. Don’t disable verification.
+      tlsOptions: { servername: IMAP_HOST, rejectUnauthorized: true },
     },
   };
 
@@ -52,54 +46,60 @@ async function checkMailboxOnce() {
   const connection = await imaps.connect(config);
   await connection.openBox(IMAP_BOX);
 
+  // Gmail trick: if you use IMAP_BOX="INBOX" you can still target label using X-GM-RAW
+  // const searchCriteria = [["X-GM-RAW", 'label:MAGENTO_ORDERS is:unread']];
+  // Otherwise: just UNSEEN in the box you opened:
   const searchCriteria = ["UNSEEN"];
-  const fetchOptions = {
-    bodies: ["HEADER.FIELDS (SUBJECT FROM TO DATE)", "TEXT"],
-    markSeen: false,
-  };
 
+  const fetchOptions = { bodies: ["HEADER.FIELDS (FROM TO SUBJECT DATE)", "TEXT"], markSeen: false };
   const results = await connection.search(searchCriteria, fetchOptions);
+
   console.log(`[imap] found ${results.length} unseen messages`);
 
-  for (const r of results.slice(0, 10)) {
+  for (const r of results) {
     const header = r.parts.find(p => p.which?.startsWith("HEADER"))?.body;
+    const text   = r.parts.find(p => p.which === "TEXT")?.body || "";
+
     const subject = header?.subject?.[0] || "(no subject)";
 
-    const body = r.parts.find(p => p.which === "TEXT")?.body || "";
-    const parsed = parseMagentoOrder(body);
-
-    console.log(`[imap] subject: ${subject}`);
-    if (parsed.orderId) {
-      console.log(`[order] #${parsed.orderId} placedOn="${parsed.placedOn}" grandTotal="${parsed.grandTotal}"`);
+    const ok = MUST_CONTAIN.every(s => text.includes(s));
+    if (!ok) {
+      console.log(`[skip] subject: ${subject} (missing Credit Card/United Kingdom)`);
+      continue;
     }
+
+    console.log(`[MATCH] subject: ${subject}`);
+    // TODO: parse order # and amount from text here
   }
 
   connection.end();
 }
 
-async function run() {
+async function loopForever() {
   while (true) {
     try {
       await checkMailboxOnce();
     } catch (err) {
       console.error("[imap] ERROR:", err?.message || err);
     }
-
-    if (RUN_ONCE) {
-      console.log("[run] done (RUN_ONCE=true), exiting");
-      process.exit(0);
-    }
-
     console.log(`[loop] sleeping ${POLL_MS}ms`);
     await new Promise(r => setTimeout(r, POLL_MS));
   }
 }
 
-// Keep Railway happy: HTTP server
-const port = Number(process.env.PORT || 3000);
+// Keep Railway happy: simple HTTP server
+const PORT = Number(process.env.PORT || 3000);
 http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
   res.end("gorilla-paylink: ok\n");
-}).listen(port, () => console.log(`[web] listening on ${port}`));
+}).listen(PORT, () => console.log(`[web] listening on ${PORT}`));
 
-run();
+// Run
+(async () => {
+  if (RUN_ONCE) {
+    await checkMailboxOnce();
+    console.log("[run] done (RUN_ONCE=true), exiting");
+    process.exit(0);
+  }
+  await loopForever();
+})();
