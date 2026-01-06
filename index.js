@@ -1,3 +1,11 @@
+process.on("SIGTERM", () => {
+  console.error("[signal] SIGTERM received - Railway is stopping the container");
+});
+process.on("SIGINT", () => {
+  console.error("[signal] SIGINT received");
+});
+
+
 import http from "http";
 import "dotenv/config";
 import imaps from "imap-simple";
